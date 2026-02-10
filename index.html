@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apollonian Gasket</title>
+  <style>
+    *{box-sizing:border-box;}
+    body { font-family: sans-serif; font-size: 13px; padding: 0; margin: 0; background-color: #627385;}
+    select, input{border-radius: 4px; border:none; padding:0.33rem; background:#fff; margin-right:0.5rem; font-size: 12px;}
+    input{font-size: 12px;}
+    input[type=number]{width:3rem;}
+    .main{width:100%; display: flex;}
+    .controls{display: flex; width: 100%;background-color: #2e3d4d;z-index: 10;color: #f1f1f1;padding: 8px 12px;align-items: center;gap: 10px;flex-wrap: wrap;}
+    .info-panel{width:300px; margin-left: 20px;}
+    .info-header{color:#f1f1f1; font-size: 14px;}
+    .info-header div{background: #3a3a3a;}
+    .info-curvature{width:100px; display:inline-block; padding:5px;  margin: 1px 0px 0px 1px;}
+    .info-radius-percent{width:100px; display:inline-block; padding:5px; margin: 1px 0px 0px 1px;}
+    .info-number{width:45px; display:inline-block; padding:5px;  margin: 1px 0px 0px 1px;}
+    .info-body .info-curvature, .info-body .info-radius-percent, .info-body .info-number{background: #c3c9cf;}
+  </style>
+</head>
+<body>
+  <div class="controls">
+   <label>Second Circle Radius</label>
+   <input id="circle1PercentRange" type="range" min="0" max="100" value="0" oninput="renderView()">
+   <label>Invert Third Circle Radius</label>
+   <input id="invertThirdCircleRadiusCheck" type="checkbox" oninput="renderView()">
+   <label>Third Circle Radius</label>
+   <input id="circle2PercentRange" type="range" min="0" max="100" value="0" oninput="renderView()">
+   <label>Circle Index</label>
+   <input id="circle2Index" type="number" value="1" min="1" oninput="renderView()">
+   <label>Minimum Radius</label>
+   <input id="minRadiusNumber" type="number" value="3" min="1" oninput="renderView()">
+   <label>Curvatures</label>
+   <select id="curvatureSelect" onchange="changeCurvatureSelect()"></select>
+   <button id="saveSvgButton">Save SVG</button>
+  </div>
+
+  <div id="main" class="main">
+    <div class="svg-container">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" id="designSvg" height="600" width="600">
+      <defs>
+        <style id="svg-def-style" type="text/css">
+          .svg-text {font-family: sans-serif; font-size: 13px;}
+          .svg-circle {fill: #ffffff; fill-opacity:0.4; stroke:#444444; stroke-width:1;}
+        </style>
+      </defs>
+      <g id="backgroundLayer"><rect id="background" width="100%" height="100%" fill="#f1f1f1" /></g>
+      <g id="textLayer"></g>
+      <g id="circleLayer"></g>
+    </svg>
+    </div>
+    <div class="info-panel">
+      <div class="info-header"><div class="info-number">Id</div><div class="info-curvature">Curvature</div><div class="info-radius-percent">Radii %</div></div>
+      <div id="infoBody" class="info-body"></div>
+    </div>
+  </div>
+<script>
+// --- Global Declarations ---
+const svgns = 'http://www.w3.org/2000/svg';
+const designSvg = document.getElementById('designSvg');
+const circleLayer = document.getElementById('circleLayer');
+const textLayer = document.getElementById('textLayer');
+const circle1PercentRange = document.getElementById('circle1PercentRange');
+const circle2PercentRange = document.getElementById('circle2PercentRange');
+const circle2Index = document.getElementById('circle2Index');
+const curvatureSelect = document.getElementById('curvatureSelect');
+const minRadiusNumber = document.getElementById('minRadiusNumber');
+const infoBody = document.getElementById('infoBody');
+const invertThirdCircleRadiusCheck = document.getElementById('invertThirdCircleRadiusCheck');
+const saveSvgButton = document.getElementById('saveSvgButton');
+saveSvgButton.addEventListener('click', saveSvg);
+
+
+const radius = 280;
+const center = {x:300, y:300, z:300};
+const stroke = '#333333';
+const fill = '#ffffff40';
+// Beginning curvatures and Symmetry - only first three curvature values required
+
+const curvaturesAndSymmetry = [
+  {curvatures:[-1, 2, 2, 3, 3], symmetry:'D2'},
+  {curvatures:[-2, 3, 6, 7, 7], symmetry:'D1'},
+  {curvatures:[-3, 4, 12, 13, 13], symmetry:'D1'},
+  {curvatures:[-3, 5, 8, 8, 12], symmetry:'D1'},
+  {curvatures:[-4, 5, 20, 21, 21], symmetry:'D1'},
+  {curvatures:[-4, 8, 9, 9, 17], symmetry:'D1'},
+  {curvatures:[-5, 6, 30, 31, 31], symmetry:'D1'},
+  {curvatures:[-5, 7, 18, 18, 22], symmetry:'D1'},
+  {curvatures:[-6, 7, 42, 43, 43], symmetry:'D1'},
+  {curvatures:[-6, 10, 15, 19, 19], symmetry:'D1'},
+  {curvatures:[-6, 11, 14, 15, 23], symmetry:'C1'},
+  {curvatures:[-7, 8, 56, 57, 57], symmetry:'D1'},
+  {curvatures:[-7, 9, 32, 32, 36], symmetry:'D1'},
+  {curvatures:[-7, 12, 17, 20, 24], symmetry:'C1'},
+  {curvatures:[-8, 9, 72, 73, 73], symmetry:'D1'},
+  {curvatures:[-8, 12, 25, 25, 33], symmetry:'D1'},
+  {curvatures:[-8, 13, 21, 24, 28], symmetry:'C1'},
+  {curvatures:[-9, 10, 90, 91, 91], symmetry:'D1'},
+  {curvatures:[-9, 11, 50, 50, 54], symmetry:'D1'},
+  {curvatures:[-9, 14, 26, 27, 35], symmetry:'C1'},
+  {curvatures:[-9, 18, 19, 22, 34], symmetry:'C1'},
+  {curvatures:[-10, 11, 110, 111, 111], symmetry:'D1'},
+  {curvatures:[-10, 14, 35, 39, 39], symmetry:'D1'},
+  {curvatures:[-10, 18, 23, 27, 35], symmetry:'C1'},
+  {curvatures:[-11, 12, 132, 133, 133], symmetry:'D1'},
+  {curvatures:[-11, 13, 72, 72, 76], symmetry:'D1'},
+  {curvatures:[-11, 16, 36, 37, 45], symmetry:'C1'},
+  {curvatures:[-11, 21, 24, 28, 40], symmetry:'C1'},
+  {curvatures:[-12, 13, 156, 157, 157], symmetry:'D1'},
+  {curvatures:[-12, 16, 49, 49, 57], symmetry:'D1'},
+  {curvatures:[-12, 17, 41, 44, 48], symmetry:'C1'},
+  {curvatures:[-12, 21, 28, 37, 37], symmetry:'D1'},
+  {curvatures:[-12, 21, 29, 32, 44], symmetry:'C1'},
+  {curvatures:[-12, 25, 25, 28, 48], symmetry:'D1'},
+  {curvatures:[-13, 14, 182, 183, 183], symmetry:'D1'},
+  {curvatures:[-13, 15, 98, 98, 102], symmetry:'D1'},
+  {curvatures:[-13, 18, 47, 50, 54], symmetry:'C1'},
+  {curvatures:[-13, 23, 30, 38, 42], symmetry:'C1'},
+  {curvatures:[-14, 15, 210, 211, 211], symmetry:'D1'},
+  {curvatures:[-14, 18, 63, 67, 67], symmetry:'D1'},
+  {curvatures:[-14, 19, 54, 55, 63], symmetry:'C1'},
+  {curvatures:[-14, 22, 39, 43, 51], symmetry:'C1'},
+  {curvatures:[-14, 27, 31, 34, 54], symmetry:'C1'},
+  {curvatures:[-15, 16, 240, 241, 241], symmetry:'D1'},
+  {curvatures:[-15, 17, 128, 128, 132], symmetry:'D1'},
+  {curvatures:[-15, 24, 40, 49, 49], symmetry:'D1'},
+  {curvatures:[-15, 24, 41, 44, 56], symmetry:'C1'},
+  {curvatures:[-15, 28, 33, 40, 52], symmetry:'C1'},
+  {curvatures:[-15, 32, 32, 33, 65], symmetry:'D1'},
+];
+
+// --- SVG Functions ---
+function saveSvg(){
+  let data = (new XMLSerializer()).serializeToString(designSvg)
+  let svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'})
+  let url = URL.createObjectURL(svgBlob)
+  const a = document.createElement('a');
+  a.setAttribute('download', 'appolonian_gasket.svg');
+  a.setAttribute('href', url);
+  a.setAttribute('target', '_blank');
+  a.click();
+}
+
+function createCircle(circleData, fill, stroke, strokeWidth=1, layer=circleLayer){
+  if(circleData?.r < 0 || isNaN(circleData?.x)) return;
+  const circle = document.createElementNS(svgns, 'circle');
+  circle.setAttributeNS(null, 'cx', circleData.x);
+  circle.setAttributeNS(null, 'cy', circleData.y);
+  circle.setAttributeNS(null, 'r', circleData.r);
+  circle.setAttributeNS(null, 'class', 'svg-circle');
+  //if(fill) circle.setAttributeNS(null, 'fill', fill);
+  //if(stroke) circle.setAttributeNS(null, 'stroke', stroke);
+  //if(strokeWidth) circle.setAttributeNS(null, 'stroke-width', strokeWidth);
+  
+  layer.appendChild(circle);
+}
+
+function createText(pos, fill, layer, textStr, className='svg-text'){
+  const text = document.createElementNS(svgns, 'text');
+  //if(id) text.setAttributeNS(null, 'id', id);
+  text.setAttributeNS(null, 'class', className);
+  text.setAttributeNS(null, 'x', pos.x);
+  text.setAttributeNS(null, 'y', pos.y);
+  if(fill) text.setAttributeNS(null, 'style', 'fill:' + fill + ';');
+  text.textContent = textStr;
+  layer.appendChild(text);
+}
+
+// --- Helper Functions ---
+function convertCircle(circleData){
+  return {
+    x: circleData.x + center.x,
+    y: circleData.y + center.y,
+    r: circleData.r * radius
+  };
+}
+
+function calculateDistance(p1,p2,positiveOnly=true){
+    let a = p1.x - p2.x;
+    let b = p1.y - p2.y;
+    let distance = Math.sqrt(a*a + b*b)
+    if(positiveOnly){ans = Math.abs(distance)}
+    if(isNaN(distance)){distance=10000;}
+    return distance;
+}
+
+function solveDescartes(c1, c2, c3, k1Factor=-1) {
+    // 1. Calculate Curvatures (k = 1/r)
+    // Circle 1 curvature is negative when it is an external circle
+    const k1 = k1Factor / c1.r;
+    const k2 = 1 / c2.r;
+    const k3 = 1 / c3.r;
+
+
+    // 2. Represent positions as Complex Numbers (z = x + iy)
+    const z1 = { re: c1.x, im: c1.y };
+    const z2 = { re: c2.x, im: c2.y };
+    const z3 = { re: c3.x, im: c3.y };
+
+    // 3. Calculate k4 (Radius)
+    const sumK = k1 + k2 + k3;
+    const rootK = 2 * Math.sqrt(Math.abs(k1 * k2 + k2 * k3 + k3 * k1));
+    const k4solutions = [sumK + rootK, sumK - rootK];
+
+    // 4. Calculate z4 (Position) using Complex Descartes
+    //Formula: z4*k4 = (z1k1 + z2k2 + z3k3) +/- 2 * sqrt(k1k2z1z2 + k2k3z2z3 + k3k1z3z1)
+
+    const term1 = {
+        re: z1.re * k1 + z2.re * k2 + z3.re * k3,
+        im: z1.im * k1 + z2.im * k2 + z3.im * k3
+    };
+
+    const innerComplex = {
+        re: (k1 * k2 * (z1.re * z2.re - z1.im * z2.im)) +
+            (k2 * k3 * (z2.re * z3.re - z2.im * z3.im)) +
+            (k3 * k1 * (z3.re * z1.re - z3.im * z1.im)),
+        im: (k1 * k2 * (z1.re * z2.im + z1.im * z2.re)) +
+            (k2 * k3 * (z2.re * z3.im + z2.im * z3.re)) +
+            (k3 * k1 * (z3.re * z1.im + z3.im * z1.re))
+    };
+
+    // Complex square root: sqrt(r(cos θ + i sin θ))
+    const r = Math.sqrt(innerComplex.re ** 2 + innerComplex.im ** 2);
+    const theta = Math.atan2(innerComplex.im, innerComplex.re);
+    const term2 = {
+        re: 2 * Math.sqrt(r) * Math.cos(theta / 2),
+        im: 2 * Math.sqrt(r) * Math.sin(theta / 2)
+    };
+
+    let results = [];
+
+    //remove doubles
+    function addResult(result){
+      for(let i=0; i<results.length; i++){
+        if(calculateDistance(results[i],result) < 1){
+        //if(results[i].x===result.x && results[i].y===result.y){
+          return;
+        }
+      }
+      results.push(result)
+    }
+
+    k4solutions.forEach(k4 => {
+        if (k4 <= 0) return; // Skip invalid curvatures for interior circles
+
+        // Two possible positions for each k4 (plus and minus the root)
+        [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([s1, s2]) => {
+            const z4 = {
+                re: (term1.re + s2 * term2.re) / k4,
+                im: (term1.im + s2 * term2.im) / k4
+            };
+            addResult({ x: z4.re, y: z4.im, r: 1 / k4 })
+            //results.push({ x: z4.re, y: z4.im, r: 1 / k4 });
+        });
+    });
+
+    return results;
+}
+
+// Not used - function solves radius of larger and smaller circles
+function descartes(c1, c2, c3){
+  const k1 = -1/c1.r; //
+  const k2 = 1 / c2.r;
+  const k3 = 1 / c3.r;
+  //console.log(k1,k2,k3)
+  const d1 = k1 + k2 + k3;
+  const d2 = 2 * Math.sqrt(k1 * k2 + k2 * k3 + k3 * k1);
+  return {smallCircle:1/(d1+d2), largeCircle:1/(d1-d2)};
+}
+
+function circleTriad(circleNew, circleBase1, circleBase2, circleBase3, isExt){
+  const minRadius = Number(minRadiusNumber.value);
+  // Create first, second and third circles
+  const c1 = solveDescartes(circleBase1, circleBase2, circleNew, isExt);
+  const c2 = solveDescartes(circleBase1, circleBase3, circleNew, isExt);
+  const c3 = solveDescartes(circleBase2, circleBase3, circleNew, 1);
+
+  createCircle(c1[0], fill, stroke, 1, circleLayer);
+  createCircle(c2[0], fill, stroke, 1, circleLayer);
+  createCircle(c3[0], fill, stroke, 1, circleLayer);
+
+  // Branch if radius is more than minRadius
+  if(c1[0].r > minRadius ){
+    circleTriad(c1[0], circleBase1, circleBase2, circleNew, isExt);
+  }
+
+  if(c2[0].r > minRadius ){
+    circleTriad(c2[0], circleBase1, circleBase3, circleNew, isExt);
+  }
+
+  if(c3[0].r > minRadius ){
+    circleTriad(c3[0], circleBase2, circleBase3, circleNew, 1);
+  }
+}
+
+function placeThirdCircle(c1, c2, r3) {
+  const r1 = c1.r;
+  const r2 = c2.r;
+
+  const d12 = r1 + r2;
+  const d13 = r1 + r3;
+  const d23 = r2 + r3;
+
+  // x-position of c3 from c1
+  const x = (d13*d13 - d23*d23 + d12*d12) / (2*d12);
+
+  // y-position (positive branch = above axis)
+  const y = Math.sqrt(Math.max(0, d13*d13 - x*x));
+
+  return { x, y, r: r3 };
+}
+
+function niceNum(num, decimalPlaces=5){
+  num = (Number.isInteger(num))? Number(num):Number(num.toFixed(decimalPlaces));
+  return parseFloat(num); //removes trailing zeros
+}
+
+function createCircleAndText(circleData, fill, stroke, strokeWidth, text, ratio, firstCircleRatio){
+  createCircle(circleData, fill, stroke, strokeWidth, circleLayer);
+  if(text!=='1'){
+    createText(circleData, null, textLayer, text);
+  }
+  const divContainer = document.createElement('div');
+  const div0 = document.createElement('div');
+  div0.className = 'info-number';
+  div0.textContent = text;
+  const div1 = document.createElement('div');
+  div1.className = 'info-curvature';
+  div1.textContent = ratioToCurvature(ratio, firstCircleRatio);
+  const div2 = document.createElement('div');
+  div2.className = 'info-radius-percent';
+  div2.textContent = niceNum(ratio);
+  divContainer.appendChild(div0);
+  divContainer.appendChild(div1);
+  divContainer.appendChild(div2);
+  infoBody.appendChild(divContainer);
+}
+
+function curvatureToRatio(curvature){
+  const normalise = -1/curvature[0];
+  const result = [];
+  curvature.forEach(curve =>{
+    result.push(1/(curve * normalise))
+  });
+  return result;
+}
+
+function ratioToCurvature(ratio, firstCircleRatio){
+  return Math.round((1/ratio) * -firstCircleRatio);
+}
+
+function changeCurvatureSelect(){
+  invertThirdCircleRadiusCheck.checked = false;
+  const curvatureAndSym = curvaturesAndSymmetry[curvatureSelect.value];
+  const ratios = curvatureToRatio(curvatureAndSym.curvatures);
+  circle1PercentRange.value = ratios[1] * 100;
+  circle2PercentRange.value = ratios[2] * 100;
+  renderView()
+}
+
+function renderView(){
+
+  textLayer.innerHTML = '';
+  circleLayer.innerHTML = '';
+  infoBody.innerHTML = '';
+  const curvatureAndSym = curvaturesAndSymmetry[curvatureSelect.value];
+  let circleIndex = Number(circle2Index.value);
+  //const radiusPercentAdjust = Number(circle2PercentRange.value)/100;
+  const c2RadiusPercent = Number(circle1PercentRange.value)/100;
+  const c3RadiusPercent = 1-c2RadiusPercent;
+
+  // If using range sliders
+  let c1RadiusRatio = 1; //is always normalised to 1 or -1;
+  //let c2RadiusRatio = c2RadiusPercent;
+  //let c3RadiusRatio = c3RadiusPercent - radiusPercentAdjust;
+
+  //console.log(curvatureToRatio(curvatures[0]))
+  //const ratios = curvatureToRatio(curvatures[curvatureSelect.value]);
+  //let c1RadiusRatio = 1; //is always normalised to 1 or -1;
+  //const firstCircleRatio = curvatures[curvatureSelect.value][0];
+
+  const firstCircleRatio = curvatureAndSym.curvatures[0];
+  //c2RadiusRatio = ratios[1];
+  c2RadiusRatio = Number(circle1PercentRange.value)/100;
+  if(invertThirdCircleRadiusCheck.checked===true){
+    // Use the inverse of circle 2
+    c3RadiusRatio = 1-c2RadiusRatio;
+  }else{
+    //Get from list
+    c3RadiusRatio = Number(circle2PercentRange.value)/100;
+    //c3RadiusRatio = ratios[2];
+  }
+
+  // Create outer and first internal circle
+  const circle1 = convertCircle({x:0, y:0, r:c1RadiusRatio});
+  const circle2 = convertCircle({x:-radius+(radius*c2RadiusRatio), y:0, r:c2RadiusRatio});
+
+  //Third circle
+  //const circle3 = convertCircle({x:+radius-(radius*c3RadiusPercent), y:0, r:c3RadiusPercent});
+  const c3 = placeThirdCircle({r:-1}, {r:c2RadiusRatio}, c3RadiusRatio);
+  c3.x = c3.x * radius;
+  c3.y = c3.y * radius;
+  const circle3 = convertCircle(c3);
+
+  createCircleAndText(circle1, fill, stroke, 1, '1', 1, -firstCircleRatio);
+  createCircleAndText(circle2, fill, stroke, 1, '2', c2RadiusRatio, firstCircleRatio);
+  createCircleAndText(circle3, fill, stroke, 1, '3', c3RadiusRatio, firstCircleRatio);
+
+  // Create Upper and lower circles
+  const c4 = solveDescartes(circle1, circle2, circle3);
+
+  circleIndex = c4.length-1;
+  circle2Index.value = circleIndex;
+
+  const circle4 = c4[circleIndex];
+  const circle5 = c4[0];
+
+  createCircleAndText(circle4, fill, stroke, 1, '4', circle4.r/radius, firstCircleRatio);
+  createCircleAndText(circle5, fill, stroke, 1, '5', circle5.r/radius, firstCircleRatio);
+
+  // Create branching triads
+  circleTriad(circle4, circle1, circle2, circle3, -1);
+  circleTriad(circle5, circle1, circle2, circle3, -1);
+}
+
+function populateCurvatureSelect(){
+  curvatureSelect.innerHTML = '';
+  curvaturesAndSymmetry.forEach((curvature, index) => {
+    const option = document.createElement('option');
+    option.text = curvature.curvatures + ' - ' + curvature.symmetry;
+    option.value = index;
+    curvatureSelect.add(option);
+  });
+}
+
+function init(){
+  populateCurvatureSelect();
+  changeCurvatureSelect(); //set from 1st
+}
+
+init();
+
+</script>
+</body>
+</html>
